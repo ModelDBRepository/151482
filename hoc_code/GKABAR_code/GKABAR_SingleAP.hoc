@@ -1,0 +1,94 @@
+load_file("Cell.hoc")
+
+proc init() {
+finitialize(-55)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+// A series of homogenous bursts; recording [Ca^2+]i to play into the Bennett model.
+// The bursts within this file occur every 10seconds, giving ~10 spikes (average firing frequency of 1Hz).
+
+SPNcells[0].soma.gkbar_cagk=0
+
+access SPNcells[0].soma
+SPNcells[0].soma.gkabar_borgka=0.02
+
+// The D-current was switched off for this simulation, and the Ca-activated K current was ammended; d1_cagk=1.6. We are using Cell.hoc, which already has these ammendments made within.
+
+steps_per_ms=1
+dt=1
+tstop=20e3
+
+objectvar stim[2]
+stim = new IClamp(0.5)
+stim.amp=5
+stim.dur=1
+stim.del=10e3
+
+// Need to open "injected current amplitudes" from the -55mV voltage-clamp protocol clamp.hoc.
+
+objectvar ClampVector, ClampFile
+ClampVector=new Vector()
+ClampFile=new File()
+ClampFile.ropen("ClampFiddyFive.dat")
+ClampVector.scanf(ClampFile)
+
+stim[1]=new IClamp(0.5)
+stim[1].amp=ClampVector.x[0]
+stim[1].dur=20e3
+stim[1].del=0
+
+nruns=201
+
+objectvar grec[nruns], vrec[nruns]
+for i=0, nruns-1 grec[i]=new Vector()
+for i=0, nruns-1 vrec[i]=new Vector()
+
+grec[0].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+
+run()
+
+objectvar DataM, DataN, M, N
+M=new Matrix(vrec[0].size(),202)
+N=new Matrix(grec[0].size(),202)
+M.setcol(1,vrec[0])
+N.setcol(1,grec[0])
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+M.setcol(0,vdt)
+N.setcol(0,vdt)
+
+for j=1, nruns-1 {
+print j, gkabar_borgka
+
+SPNcells[0].soma.gkabar_borgka=0.02 - j*0.0001
+
+grec[j].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[j].record(&SPNcells[0].soma.v(0.5))
+
+stim[1].amp=ClampVector.x[j]
+
+run()
+
+N.setcol(j+1,grec[j])
+M.setcol(j+1,vrec[j])
+
+}
+
+// Save matrix of recorded vectors to .dat dataset.
+
+DataM=new File()
+DataM.wopen("SingleAP_GKABAR.dat")
+M.fprint(DataM, " %g")
+DataM.close("SingleAP_GKABAR.dat")

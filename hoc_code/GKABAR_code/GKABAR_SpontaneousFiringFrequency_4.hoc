@@ -1,0 +1,115 @@
+// Playing Recordings of EPSCs into the model cell
+// 1. This .hoc code plays in a whole-cell patch clamp recording of an SPN into the model.
+// 2. The recorded cell was voltage-clamped at -53mV (~resting membrane potential), and so these currents are synaptic inputs.
+// 3. The vector of synaptic inputs was recorded at 1kHz, and is the file "EPSCs_Filtered.txt"
+// 4. For varying values of the parameter GKABAR, the membrane potential trace in response to this input is recorded into a .dat file
+// 5. From this .dat file, the firing frequency and other properites can be determined
+// 6. In the current file, GKABAR is varied between 20-18mS/cm2 in 0.1mS/cm2 increments
+// Created: March 2013, Linford Briant
+
+load_file("Cell.hoc")
+
+proc init() {
+finitialize(-55)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+// This ensures that as the parameter GKABAR is varied, the cell has a resting membrane potential of -55mV
+objectvar ClampVector, ClampFile
+ClampVector=new Vector()
+ClampFile=new File()
+ClampFile.ropen("ClampFiddyFive_withNa.dat")
+ClampVector.scanf(ClampFile)
+
+steps_per_ms=1
+dt=1
+tstop=50e3
+
+objectvar stim
+stim=new IClamp(0.5)
+stim.dur=tstop
+stim.del=0
+// stim.amp=ClampVector.x[0]
+// This means we are not setting the RMP of every cell to -55mV
+stim.amp=0 
+
+access SPNcells[0].soma
+SPNcells[0].soma.gkabar_borgka=0.02
+
+// Playing in synaptic train (08-09-23a.smr) "EPSCs_Filtered.txt"
+// This has been filtered to remove noise
+// This has been down-sampled to 1kHz
+// This has been processed in MATLAB so that the trace is in nA (units used in NEURON), as the output in Spike2 is in pA.
+
+objectvar EPSC_vec, EPSC_File
+EPSC_vec=new Vector()
+EPSC_File=new File()
+EPSC_File.ropen("EPSCs_Filtered.txt")
+EPSC_vec.scanf(EPSC_File)
+
+objectvar EPSC_stim
+EPSC_stim = new IClamp(0.5)
+EPSC_stim.dur=1e9
+EPSC_stim.del=0
+EPSC_vec.play(&EPSC_stim.amp,1)
+
+nstart=60
+nvrec=80 // one recording vector for each value of gkabar_borgka between 0.005-0.001 in increments of 0.00005
+nstimrec=nvrec-nstart // one stim vector for each value of gkabar_borgka
+SPNcells[0].soma.gkabar_borgka=0.02-(0.0001*nstart)
+// stim.amp=ClampVector.x[nstart]
+
+objectvar vrec[nvrec-nstart], stimrec[nvrec-nstart]
+for i=0, nvrec-nstart-1 vrec[i]=new Vector()
+for i=0, nvrec-nstart-1 stimrec[i]=new Vector()
+
+vrec[0].record(&SPNcells[0].soma.v)
+stimrec[0].record(&stim.i)
+run()
+print stim.amp, gkabar_borgka
+
+objectvar DataM, M, DataK, K
+M=new Matrix(vrec[0].size(),nvrec-nstart+1) // One extra column for time.
+K=new Matrix(stimrec[0].size(),nvrec-nstart+1) // One extra column for time.
+M.setcol(1,vrec[0])
+K.setcol(1,stimrec[0])
+
+// Set first column in matrices M and N to time.
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+M.setcol(0,vdt)
+K.setcol(0,vdt)
+
+for j=nstart+1,nvrec-1 {
+print j
+vrec[j-nstart].record(&SPNcells[0].soma.v)
+stimrec[j-nstart].record(&stim.i)
+gkabar_borgka=0.02-(0.0001*j)
+// stim.amp=ClampVector.x[j]
+print stim.amp, gkabar_borgka
+
+run()
+M.setcol(j+1-nstart,vrec[j-nstart])
+K.setcol(j+1-nstart,stimrec[j-nstart])
+}
+
+// Save matrix of recorded vectors to .dat dataset.
+
+DataM=new File()
+DataK=new File()
+DataM.wopen("SpontaneousFiringFrequency_GKABAR_4_V.dat")
+M.fprint(DataM, " %g")
+DataM.close("SpontaneousFiringFrequency_GKABAR_4_V.dat")
+DataK.wopen("SpontaneousFiringFrequency_GKABAR_4_current.dat")
+K.fprint(DataK, " %g")
+DataK.close("SpontaneousFiringFrequency_GKABAR_4_current.dat")

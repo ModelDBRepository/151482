@@ -1,0 +1,11 @@
+// init.hoc
+// make buttons to run scripts to generate figures
+load_file("nrngui.hoc")
+
+xpanel("Pickering et al. 2013, Whyment et al. 2011")
+  xbutton("Fig. 3B", "xopen(\"hoc_code/Model_fit_code/I-V.hoc\")")
+// ...
+  xbutton("Fig. 3Ab", "xopen(\"hoc_code/Model_fit_code/I-F.hoc\")")
+// ...
+  xbutton("quit to generate another fig","quit()")
+xpanel()

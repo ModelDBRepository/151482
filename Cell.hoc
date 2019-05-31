@@ -1,0 +1,166 @@
+// Model Topology and Biophysics
+// Creates cell template and adds membrane mechanisms
+// Created: March 2011, Linford Briant
+
+load_file("nrngui.hoc")
+
+tstop=2000
+celsius=20
+
+proc init() {
+finitialize(-55)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+begintemplate SPNcell
+public soma, axon, mprox, mdend, ldend
+create soma, axon, mprox, mdend[1], ldend[2]
+public nclist
+objectvar nclist
+proc init() {ndendm=2
+ndendl=3
+create soma, axon, mprox, mdend[ndendm], ldend[ndendl]
+connect mprox(0), soma(1)
+connect axon(0), soma(1)
+for i=0, ndendl-1 connect ldend[i](0), soma(0)
+for i=0, ndendm-1 connect mdend[i](0), mprox(1)
+nclist=new List()
+}
+endtemplate SPNcell
+
+// nSPNcells=7 instances set-up in case we want to study postganglionic gain
+
+nSPNcells=7
+ndendm=2
+ndendl=3
+
+objectvar SPNcells[nSPNcells]
+for i=0, nSPNcells-1 {SPNcells[i]=new SPNcell()}
+
+for i=0, nSPNcells-1 SPNcells[i].soma {nseg=1 L=23 Ra=120
+        insert capacitance {cm=1}
+        insert pas {g_pas=8e-06 e_pas=-60}
+        insert na3 {gbar_na3=0.05 ar2_na3=1 ena=55}
+        insert na_ion {ena=55}
+        insert borgkdr {gkdrbar_borgkdr=0.01}
+        insert borgka {gkabar_borgka=0.012 vhalfn_borgka=-45 a0n_borgka=0.04 zetak_borgka=-5 a0l_borgka=0.023 gmn_borgka=0.45 zetan_borgka=-4 zetal_borgka=2 vhalfl_borgka=-67 zetam_borgka=4}
+        insert cadifus2 {}
+        insert morphology {diam=14}
+        insert cal {gcalbar_cal=0.001}
+        insert can {gcanbar_can=0.001}
+        insert kahp {gkahpbar_kahp=0.0001}
+        insert cagk {gkbar_cagk=0.005 d1_cagk=1.6}
+        insert ca_ion {}
+        insert k_ion {ek=-90}
+}
+
+for i=0, nSPNcells-1 SPNcells[i].axon {nseg=10  L=500  Ra=120
+        /* First segment only */
+		insert ca_ion {}
+        insert capacitance {cm=1}
+        insert morphology {diam=0.5}
+        insert na3 {gbar_na3=0.1 ena=55 ar2_na3=1}
+        insert na_ion {ena=55}
+        insert borgkdr {gkdrbar_borgkdr=0.001}
+        insert k_ion {ek=-90}
+        insert pas {g_pas=0.0002 e_pas=-70}
+		insert cal {gcalbar_cal(1)=0.001
+		gcalbar_cal(0)=0}
+        insert can {gcanbar_can(1)=0.008
+		gcanbar_can(0)=0
+		cons_can=0.5}
+}
+
+for i=0, nSPNcells-1 SPNcells[i].mprox {
+nseg=5  L=25  Ra=120
+insert capacitance {cm=1}
+insert morphology {diam=5}
+insert pas {g_pas=8e-06 e_pas=-60}
+insert na3 {gbar_na3=0 ar2_na3=1}
+insert na_ion {ena=55}
+insert borgkdr {gkdrbar_borgkdr=0}
+insert k_ion {ek=-90}
+}
+
+for i=0, nSPNcells-1 for j=0, ndendm-1 SPNcells[i].mdend[j] { 
+nseg=20  L=600  Ra=120
+insert capacitance {cm=1}
+insert morphology {diam=2}
+insert pas {g_pas=8e-06 e_pas=-60}
+insert na3 {gbar_na3=0 ar2_na3=1}
+insert na_ion {ena=55}
+insert borgkdr {gkdrbar_borgkdr=0}
+insert k_ion {ek=-90}
+}
+
+for i=0, nSPNcells-1 for j=0, ndendl-1 SPNcells[i].ldend[j] {
+nseg=10  L=200  Ra=120
+insert capacitance {cm=1}
+insert morphology {diam=2}
+insert pas {g_pas=8e-06 e_pas=-60}
+insert na3 {gbar_na3=0 ar2_na3=1}
+insert na_ion {ena=55}
+insert borgkdr {gkdrbar_borgkdr=0}
+insert borgka {gkabar_borgka=0}
+insert k_ion {ek=-90}
+}
+
+// The following procedure displays the topology and segment properties for the first instance of SPNcells template, for inspection.
+
+proc SPNcellsCheck() {
+topology()
+access SPNcells[0].soma
+psection()
+access SPNcells[0].mdend[0]
+psection()
+access SPNcells[0].ldend[0]
+psection()
+access SPNcells[0].mprox[0]
+psection()
+access SPNcells[0].axon
+psection()
+}
+
+// Parameter fitting for _cagk
+
+proc d1()  {
+for i=0, nSPNcells-1 SPNcells[i].soma {d1_cagk=$1}
+}
+d1(1.6)
+SPNcell[0].soma.gkbar_cagk=0
+
+// Parameter fitting for _na3
+
+Rd_na3=0.03
+Rg_na3=0.03
+SPNcells[0].soma.pert_na3=-10
+SPNcells[0].axon.pert_na3=-10
+
+// Setting passive properties of membrane in all sections
+
+proc passive() {
+g_passive=$1
+e_passive=$2
+SPNcells[0].mdend[0].g_pas=g_passive
+SPNcells[0].mdend[1].g_pas=g_passive
+SPNcells[0].ldend[0].g_pas=g_passive
+SPNcells[0].ldend[1].g_pas=g_passive
+SPNcells[0].ldend[2].g_pas=g_passive
+SPNcells[0].mprox.g_pas=g_passive
+SPNcells[0].soma.g_pas=g_passive
+SPNcells[0].mdend[0].e_pas=e_passive
+SPNcells[0].mdend[1].e_pas=e_passive
+SPNcells[0].ldend[0].e_pas=e_passive
+SPNcells[0].ldend[1].e_pas=e_passive
+SPNcells[0].ldend[2].e_pas=e_passive
+SPNcells[0].mprox.e_pas=e_passive
+SPNcells[0].soma.e_pas=e_passive
+}
+
+passive(1.8e-05,-40)

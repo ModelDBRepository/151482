@@ -1,0 +1,109 @@
+// Determines dependency of IA on prepulse duration
+// cf. Figure 2(B) in Whyment et al. 2011
+// Created Linford Briant October 2013
+
+load_file("Cell.hoc")
+
+tstop=5000
+steps_per_ms=1
+dt=1
+
+celcius=20
+
+access SPNcells[0].soma
+SPNcells[0].soma.gbar_na3=0
+SPNcells[0].axon.gbar_na3=0
+
+objectvar stim
+stim=new VClamp(0.5)
+stim.amp[0]=0
+stim.dur[0]=3000
+stim.dur[1]=0
+stim.amp[1]=-90
+stim.amp[2]=0
+stim.dur[2]=2000
+
+proc stimDUR() {
+stim.dur[1]=$1
+}
+
+// Following sets up all recording vectors, the time vector, and the database matrices:
+
+nstim=21
+
+objectvar IArec[nstim], grec[nstim], vrec[nstim], EKrec[nstim]
+for i=0, nstim-1 IArec[i]=new Vector()
+for i=0, nstim-1 grec[i]=new Vector()
+for i=0, nstim-1 vrec[i]=new Vector()
+for i=0, nstim-1 EKrec[i]=new Vector()
+
+stimDUR(0)
+grec[0].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+run()
+
+// Sets up vector which is the A-current rather than the A-conductance:
+
+objectvar DataM, DataN, DataK, M, N, K
+M=new Matrix(vrec[0].size(),22)
+N=new Matrix(vrec[0].size(),22)
+K=new Matrix(vrec[0].size(),22)
+
+N.setcol(1,grec[0])
+K.setcol(1,vrec[0])
+
+EKrec[0]=vrec[0].sub(ek)
+IArec[0]=grec[0].mul(EKrec[0])
+
+M.setcol(1,IArec[0])
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+M.setcol(0,vdt)
+N.setcol(0,vdt)
+K.setcol(0,vdt)
+
+// Now that matrices and protocol have been set up, we can run the main procudure:
+
+for i=1, nstim-1 {
+
+print i
+
+stimDUR(0+i*5)
+
+// This will do 21 simulations, with stimDUR() between 5ms (the initial) and 100ms in 5ms increments.
+
+grec[i].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[i].record(&SPNcells[0].soma.v(0.5))
+
+run()
+
+N.setcol(i+1,grec[i])
+K.setcol(i+1,vrec[i])
+
+// Need to set columns for these two matrices before IA else they get overwritten.
+
+EKrec[i]=vrec[i].sub(ek)
+IArec[i]=grec[i].mul(EKrec[i])
+
+M.setcol(i+1,IArec[i])
+
+}
+
+DataN=new File()
+DataN.wopen("PrepulseAmplitude_GKA.dat")
+N.fprint(DataN, " %g")
+DataN.close("PrepulseAmplitude_GKA.dat")
+
+DataK=new File()
+DataK.wopen("PrepulseAmplitude_V.dat")
+K.fprint(DataK, " %g")
+DataK.close("PrepulseAmplitude_V.dat")
+
+DataM=new File()
+DataM.wopen("PrepulseAmplitude_IA.dat")
+M.fprint(DataM, " %g")
+DataM.close("PrepulseAmplitude_IA.dat")

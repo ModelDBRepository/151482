@@ -1,0 +1,121 @@
+// I-F curve of cell
+// Figure 3Ab from Briant and Stalbovskiy et al. 2014
+// Created Linford Briant October 2013
+
+load_file("Cell.hoc")
+
+tstop=52000
+steps_per_ms=1
+dt=1
+
+proc init() {
+finitialize(-55.1)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+objectvar stim
+stim = new IClamp(0.5)
+stim.amp=0
+stim.dur=50000 
+// 50s of stimulation (so multiply number of spikes - spiketimes.size() - by 1/50=0.02 to get frequency)
+stim.del=1000
+
+// This vector writes the current injected for plotting the I-F curve
+objectvar stimamp
+stimamp=new Vector(10)
+stimamp.x[0]=stim.amp*1e3 // pA
+
+nvrec=123 // one potential recording vector for each of the 0.0005nA=0.5pA increments in the simulation amplitude.rec
+nstimrec=123 // one current clamp recording vector to record the family of depolarising current pulse injections.
+
+objectvar vrec[nvrec], stimrec[nstimrec]
+for i=0, nvrec-1 vrec[i]=new Vector()
+for i=0, nstimrec-1 stimrec[i]=new Vector()
+
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+stimrec[0].record(&stim.i)
+
+objref Firing_graph_handle
+Firing_graph_handle = new Graph()
+Firing_graph_handle.size(0,tstop,-70,0)
+Firing_graph_handle.exec_menu("10% Zoom out")
+Firing_graph_handle.exec_menu("Keep Lines")
+Firing_graph_handle.label(.4,.9,"Firing Data")
+
+// Record spike times into a vector spiketimes, so we can calculate av FF.
+objref nc[nvrec], nil
+SPNcells[0].soma nc[0] = new NetCon(&v(0.5), nil)
+objref spiketimes[nvrec]
+spiketimes[0] = new Vector()
+nc[0].record(spiketimes[0])
+
+gkabar_borgka=0.005
+run()
+
+objref FrequencySpikes
+FrequencySpikes=new Vector(123)
+FrequencySpikes.x[0]=spiketimes[0].size()*0.02
+print "Iteration=",0,"FiringFrequency=",FrequencySpikes.x[0],"NumberOfSpikes=",spiketimes[0].size(),"CurrentPulseAmplitude (pA)",stimamp.x[0]
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+vrec[0].line(Firing_graph_handle,vdt,2,1)
+
+objectvar DataM, M, DataK, K
+M=new Matrix(vrec[0].size(),124) // One extra column for time.
+K=new Matrix(stimrec[0].size(),124) // One extra column for time.
+M.setcol(1,vrec[0])
+K.setcol(1,stimrec[0])
+
+M.setcol(0,vdt)
+K.setcol(0,vdt)
+
+for i=1, 10-1 {
+
+SPNcells[0].soma nc[i] = new NetCon(&v(0.5), nil)
+spiketimes[i] = new Vector()
+nc[i].record(spiketimes[i])
+
+vrec[i].record(&SPNcells[0].soma.v(0.5))
+stim.amp=0 + i*0.0005
+stimrec[i].record(&stim.i)
+
+stimamp.x[i]=stim.amp*1e3
+
+run()
+
+FrequencySpikes.x[i]=spiketimes[i].size()*0.02
+print "Iteration=",i,"FiringFrequency=",FrequencySpikes.x[i],"NumberOfSpikes=",spiketimes[i].size(),"CurrentPulseAmplitude (pA)",stimamp.x[i]
+
+vrec[i].line(Firing_graph_handle,vdt,2,1)
+Firing_graph_handle.size(0,tstop,-70,0)
+
+M.setcol(i+1,vrec[i])
+K.setcol(i+1,stimrec[i])
+}
+
+// Save matrix of recorded vectors to .dat dataset.
+
+// This will save the current and potential data for analysis
+// DataM=new File()
+// DataK=new File()
+// DataM.wopen("I-F_V.dat")
+// M.fprint(DataM, " %g")
+// DataK.wopen("I-F_Current.dat")
+// K.fprint(DataK, " %g")
+
+objref IF_graph_handle
+IF_graph_handle = new Graph()
+FrequencySpikes.line(IF_graph_handle,stimamp,2,1)
+IF_graph_handle.size(0,60,0,10)
+IF_graph_handle.exec_menu("10% Zoom out")
+IF_graph_handle.label(.4,.9,"Injected Current - Firing Frequency Curve; Figure 3B")

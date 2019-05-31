@@ -1,0 +1,109 @@
+// Simulations that record the membrane potential and A-conductance for sinusoidal varying ISI NetStim, with varying levels of maximal A-conductance density.
+
+load_file("Cell.hoc")
+
+tstop=6000
+
+proc init() {
+finitialize(-50)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+steps_per_ms=1
+dt=1
+
+celcius=20
+
+access SPNcells[0].soma
+
+// Spiking currents need to be switched off
+SPNcells[0].soma.gbar_na3=0
+SPNcells[0].axon.gbar_na3=0
+
+// These current vectors make sure that the cell is kept at -50mV and stepped down to -100mV, irrespective of the value of the parameter (GKABAR)
+
+objectvar ClampVector[2], ClampFile[2]
+ClampVector[0]=new Vector()
+ClampFile[0]=new File()
+ClampFile[0].ropen("ClampHundred.dat")
+ClampVector[0].scanf(ClampFile[0])
+
+ClampVector[1]=new Vector()
+ClampFile[1]=new File()
+ClampFile[1].ropen("ClampFiddy.dat")
+ClampVector[1].scanf(ClampFile[1])
+
+nstim=3
+objectvar stim[nstim]
+for i=0, nstim-1 stim[i]=new IClamp(0.5)
+stim[0].amp=ClampVector[1].x[0]
+stim[0].dur=3000
+stim[0].del=0
+stim[1].amp=ClampVector[0].x[0]
+stim[1].dur=1000
+stim[1].del=3000
+stim[2].amp=ClampVector[1].x[0]
+stim[2].dur=2000
+stim[2].del=4000
+
+nruns=201
+objectvar grec[nruns], vrec[nruns]
+for i=0, nruns-1 grec[i]=new Vector()
+for i=0, nruns-1 vrec[i]=new Vector()
+
+grec[0].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+
+// first simulation for gkabar = 20mS/cm2
+gkabar_borgka=0.02
+run()
+
+objectvar DataM, DataN, M, N
+M=new Matrix(vrec[0].size(),202)
+N=new Matrix(grec[0].size(),202)
+M.setcol(1,vrec[0])
+N.setcol(1,grec[0])
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+M.setcol(0,vdt)
+N.setcol(0,vdt)
+
+for i=1, nruns-1 {
+print i
+grec[i].record(&SPNcells[0].soma.gka_borgka(0.5))
+vrec[i].record(&SPNcells[0].soma.v(0.5))
+
+stim[0].amp=ClampVector[1].x[i]
+stim[1].amp=ClampVector[0].x[i]
+stim[2].amp=ClampVector[1].x[i]
+
+print gkabar_borgka
+
+gkabar_borgka=0.02-(0.0001*i)
+
+run()
+
+N.setcol(i+1,grec[i])
+M.setcol(i+1,vrec[i])
+
+}
+
+DataN=new File()
+DataN.wopen("GKABAR_Inflection.dat")
+N.fprint(DataN, " %g")
+DataN.close("GKABAR_Inflection.dat")
+
+DataM=new File()
+DataM.wopen("GKABAR_Inflection.dat")
+M.fprint(DataM, " %g")
+DataM.close("GKABAR_Inflection.dat")

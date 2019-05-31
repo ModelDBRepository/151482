@@ -1,0 +1,113 @@
+// I-V curve of cell
+// Figure 3B from Briant and Stalbovskiy et al. 2014
+// Created Linford Briant October 2013
+
+load_file("Cell.hoc")
+
+tstop=3000
+steps_per_ms=1
+dt=1
+
+objectvar clamp
+clamp=new IClamp(0.5)
+clamp.amp=0
+clamp.dur=tstop
+clamp.del=0
+
+nvrec=25
+
+proc init() {
+finitialize(-55.05)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+nstim=1
+objectvar stim[nstim]
+stim[0]=new IClamp(0.5)
+stim[0].amp=0
+stim[0].dur=1000
+stim[0].del=1000
+
+objectvar vrec[nvrec]
+for i=0, nvrec-1 vrec[i]=new Vector()
+
+objectvar M
+M=new Matrix()
+objectvar DataV
+DataV=new File()
+
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+
+gkabar_borgka=0.005
+run()
+
+objectvar DeltaV
+DeltaV=new Vector(25)
+DeltaV.x[0]=vrec[0].x[2000]
+print DeltaV.x[0]
+
+objectvar stimamp
+stimamp=new Vector(25)
+stimamp.x[0]=stim[0].amp*1e3
+print stimamp.x[0]
+
+M.resize(vrec[0].size(),26)
+
+M.setcol(1,vrec[0])
+
+objectvar vdt
+vdt = new Vector()
+vdt.resize(vrec[0].size())
+vdt.indgen(dt)
+
+M.setcol(0,vdt)
+
+objref vrec_graph_handle
+vrec_graph_handle = new Graph()
+vrec[0].line(vrec_graph_handle,vdt,1,1)
+vrec_graph_handle.size(0,tstop,-90,-50)
+vrec_graph_handle.exec_menu("Keep Lines")
+vrec_graph_handle.exec_menu("View = plot")
+vrec_graph_handle.exec_menu("10% Zoom out")
+vrec_graph_handle.label(.4,.9,"Voltage graph")
+
+
+objref DeltaV_graph_handle
+DeltaV_graph_handle = new Graph()
+DeltaV_graph_handle.size(-60,0,-70,-54)
+DeltaV_graph_handle.exec_menu("10% Zoom out")
+DeltaV_graph_handle.label(.4,.9,"I-V Curve; Figure 3B")
+
+for i=1, nvrec-1 {
+
+stim[0].amp=0-(0.0025*i)
+
+vrec[i].record(&SPNcells[0].soma.v(0.5))
+
+run()
+
+vrec[i].line(vrec_graph_handle,vdt,2,1)
+vrec_graph_handle.size(0,tstop,-70,-50)
+DeltaV.x[i]=vrec[i].x[2000]
+stimamp.x[i]=stim[0].amp*1e3
+
+M.setcol(i+1,vrec[i])
+
+print i, stimamp.x[i]
+
+DeltaV.c(0,i).line(DeltaV_graph_handle,stimamp.c(0,i),2,1)
+
+}
+
+DataV.wopen("I-V_V.dat")
+
+M.fprint(DataV, " %g")
+
+DataV.close("I-V_V.dat")
+

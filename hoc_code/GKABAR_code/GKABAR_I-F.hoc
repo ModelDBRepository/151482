@@ -1,0 +1,118 @@
+// Simulations that record the membrane potential and A-conductance for sinusoidal varying ISI NetStim, with varying levels of maximal A-conductance density.
+
+load_file("Cell.hoc")
+
+tstop=52000
+
+// Initiate from -55mV.
+
+proc init() {
+finitialize(-55)
+/*
+if (cvode.active()) {
+cvode.re_init()
+} else {fcurrent()
+}
+frecord_init()
+*/
+}
+
+steps_per_ms=1
+dt=1
+
+celcius=20
+
+access SPNcells[0].soma
+
+// Need to open "injected current amplitudes" from the -55mV voltage-clamp protocol clamp.hoc.
+
+// NOTE THAT NOW WE HAVE SPIKING CURRENTS SO CLAMPFIDDYFIVE.DAT WILL NOT GIVE EXACTLY -55mV!!!
+objectvar ClampVector, ClampFile
+ClampVector=new Vector()
+ClampFile=new File()
+ClampFile.ropen("ClampFiddyFive.dat")
+ClampVector.scanf(ClampFile)
+
+nstim=2
+
+objectvar stim[nstim]
+for i=0, nstim-1 stim[i]=new IClamp(0.5)
+stim[0].amp=ClampVector.x[0]
+stim[0].dur=tstop
+stim[0].del=0
+
+stim[1].amp=0
+stim[1].dur=50000
+stim[1].del=1000
+
+nvrec=123 // one potential recording vector for each of the 0.005nA increments in the simulation amplitude.rec
+ngrec=123 // one conductance recording vector for each of the 0.005nA increments in the simulation amplitude.
+nstimrec=123 // one current clamp recording vector to record the family of depolarising current pulse injections.
+
+objectvar vrec[nvrec], grec[ngrec], stimrec[nstimrec]
+for i=0, nvrec-1 vrec[i]=new Vector()
+for i=0, ngrec-1 grec[i]=new Vector()
+for i=0, nstimrec-1 stimrec[i]=new Vector()
+
+vrec[0].record(&SPNcells[0].soma.v(0.5))
+grec[0].record(&SPNcells[0].soma.gka_borgka(0.5))
+stimrec[0].record(&stim[1].i)
+
+gkabar_borgka=0.02
+run()
+
+objectvar DataM, M, DataN, N, DataK, K
+M=new Matrix(vrec[0].size(),124) // One extra column for time.
+N=new Matrix(grec[0].size(),124) // One extra column for time.
+K=new Matrix(stimrec[0].size(),124) // One extra column for time.
+M.setcol(1,vrec[0])
+N.setcol(1,grec[0])
+K.setcol(1,stimrec[0])
+
+nruns=201
+for j=0, nruns-1 {
+
+gkabar_borgka=0.02-(0.0001*j)
+
+for i=1, nvrec-1 {
+print i
+vrec[i].record(&SPNcells[0].soma.v(0.5))
+grec[i].record(&SPNcells[0].soma.gka_borgka(0.5))
+stim[1].amp=0 + i*0.0005
+stimrec[i].record(&stim[1].i)
+
+run()
+M.setcol(i+1,vrec[i])
+N.setcol(i+1,grec[i])
+K.setcol(i+1,stimrec[i])
+
+// Set first column in matrices M and N to time.
+
+// Save matrix of recorded vectors to .dat dataset.
+
+strdef tstr, fname1, basenamev
+strdef tstr, fname2, basenamegka
+strdef tstr, fname3, basenameI
+
+basenamev="FF_GKABAR_V_"
+basenamegka="FF_GKABAR_gka_"
+basenameI="FF_GKABAR_I_"
+
+sprint(fname1,"%s%d.dat",basenamev,j)
+sprint(fname2,"%s%d.dat",basenamegka,j)
+sprint(fname3,"%s%d.dat",basenameI,j)
+
+DataM=new File()
+DataN=new File()
+DataK=new File()
+DataM.wopen(fname1)
+M.fprint(DataM, " %g")
+DataM.close(fname1)
+DataN.wopen(fname2)
+N.fprint(DataN, " %g")
+DataN.close(fname2)
+DataK.wopen(fname3)
+K.fprint(DataK, " %g")
+DataK.close(fname3)
+}
+}
